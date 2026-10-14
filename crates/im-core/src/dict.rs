@@ -19,7 +19,7 @@
 //!   which case `weight` defaults to [`DEFAULT_WEIGHT`].
 //! * `spelling` is space-separated pinyin syllables. Tone marks, `ü` and
 //!   `'` separators are accepted and folded into the canonical form, so
-//!   `lǜ`, `lv` and `lü` are the same word. See [`crate::text`].
+//!   `lǜ`, `lv` and `lü` are the same word.
 //! * `weight` is an integer in `0..=65535`; higher means "more likely".
 //!
 //! Table-based schemes (wubi, cangjie, stroke) reuse the same file and put the

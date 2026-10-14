@@ -19,6 +19,8 @@ path = "src/main.rs"
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }
+fontdb = "0.24.0"
+fontdue = "0.9.4"
 im-core = { workspace = true, features = ["embed-dictionary"] }
 log = { version = "0.4.34", features = ["std"] }
 x11rb = { workspace = true }

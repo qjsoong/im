@@ -22,6 +22,7 @@ mod handler;
 mod keyboard;
 mod logging;
 mod preedit;
+mod window;
 
 use std::process::ExitCode;
 
@@ -36,6 +37,7 @@ use im_core::{Loader, Request};
 
 use crate::handler::Handler;
 use crate::keyboard::Keyboard;
+use crate::window::CandidateWindow;
 
 /// Default name applications look for in `XMODIFIERS`.
 const DEFAULT_NAME: &str = "im";
@@ -147,8 +149,29 @@ fn run(cli: &Cli) -> Result<()> {
         cli.name
     );
 
-    let mut handler =
-        Handler::new(schema, index, loader.config(), page_size, options, keyboard);
+    let window = if loader.config().xim.window {
+        match CandidateWindow::new(&connection, screen) {
+            Ok(window) => Some(window),
+            Err(error) => {
+                // Not fatal: keys still compose and commit, there is just no
+                // candidate list to look at.
+                log::warn!("{error:#}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let mut handler = Handler::new(
+        schema,
+        index,
+        loader.config(),
+        page_size,
+        options,
+        keyboard,
+        window,
+    );
 
     log::info!(
         "starting in {} mode, {} toggles it",
@@ -165,10 +188,17 @@ fn run(cli: &Cli) -> Result<()> {
             .wait_for_event()
             .context("waiting for an X event")?;
         // The keyboard layout can change under us; every client receives this.
-        if let Event::MappingNotify(_) = event
+        if let Event::MappingNotify(_) = &event
             && let Err(error) = handler.reload_keyboard(&connection)
         {
             log::warn!("could not reread the keyboard mapping: {error}");
+        }
+        // Our own candidate window, asking to be repainted.
+        if let Event::Expose(expose) = &event
+            && handler.owns_window(expose.window)
+        {
+            handler.repaint_window();
+            continue;
         }
         server
             .filter_event(&event, &mut connections, &mut handler)

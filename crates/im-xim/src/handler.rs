@@ -5,7 +5,7 @@
 //! only turn that reaction into XIM requests. That split is what makes the
 //! interesting half testable without an X server.
 
-use x11rb::protocol::xproto::EventMask;
+use x11rb::protocol::xproto::{EventMask, Window as XWindow};
 use x11rb::rust_connection::RustConnection;
 use xim::x11rb::X11rbServer;
 use xim::{InputStyle, Server, ServerError, ServerHandler, UserInputContext};
@@ -17,6 +17,7 @@ use im_core::{
 
 use crate::keyboard::Keyboard;
 use crate::preedit;
+use crate::window::{CandidateWindow, Content, Item};
 
 /// What came of a keystroke.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,7 +56,7 @@ impl InputContextData {
 }
 
 /// State shared by every input context.
-pub struct Handler {
+pub struct Handler<'a> {
     schema: Schema,
     index: CodeIndex,
     keymap: Keymap,
@@ -65,12 +66,14 @@ pub struct Handler {
     toggle: KeyEvent,
     mode: InputMode,
     keyboard: Keyboard,
+    /// The candidate window, when one could be created.
+    window: Option<CandidateWindow<'a>>,
     /// Number of live input contexts; logged, and the hook a future version
     /// would use to exit when nothing is using the daemon.
     contexts: usize,
 }
 
-impl Handler {
+impl<'a> Handler<'a> {
     /// Build a handler from an already loaded engine.
     pub fn new(
         schema: Schema,
@@ -79,6 +82,7 @@ impl Handler {
         page_size: usize,
         options: LookupOptions,
         keyboard: Keyboard,
+        window: Option<CandidateWindow<'a>>,
     ) -> Self {
         // `Config::finish` validated the binding, so this cannot fail here.
         let toggle = KeyEvent::parse(&config.xim.toggle_key).unwrap_or(KeyEvent {
@@ -95,8 +99,70 @@ impl Handler {
             toggle,
             mode: config.xim.initial_mode,
             keyboard,
+            window,
             contexts: 0,
         }
+    }
+
+    /// True when `window` is this daemon's candidate window.
+    pub fn owns_window(&self, window: XWindow) -> bool {
+        self.window
+            .as_ref()
+            .is_some_and(|candidate| candidate.id() == window)
+    }
+
+    /// Repaint the candidate window after the server asked for an expose.
+    pub fn repaint_window(&mut self) {
+        if let Some(window) = self.window.as_mut()
+            && let Err(error) = window.repaint()
+        {
+            log::warn!("could not repaint the candidate window: {error:#}");
+        }
+    }
+
+    /// Take the candidate window off the screen.
+    fn hide_window(&mut self) {
+        if let Some(window) = self.window.as_mut()
+            && let Err(error) = window.hide()
+        {
+            log::warn!("could not hide the candidate window: {error:#}");
+        }
+    }
+
+    /// What the candidate window should show for the current composition.
+    fn content(&self, data: &InputContextData) -> Content {
+        let session = self.session(data);
+        let (start, end) = session.page_bounds();
+        let items = session.candidates()[start..end]
+            .iter()
+            .enumerate()
+            .map(|(offset, candidate)| Item {
+                number: offset + 1,
+                text: candidate.text.clone(),
+                selected: start + offset == session.highlight(),
+            })
+            .collect();
+        Content {
+            input: session.input().to_owned(),
+            items,
+            page: (session.page() + 1, session.page_count()),
+        }
+    }
+
+    /// Put the candidate window where the caret is.
+    fn show_window(
+        &mut self,
+        data: &InputContextData,
+        client: XWindow,
+        spot: (i16, i16),
+    ) -> Result<(), ServerError> {
+        let content = self.content(data);
+        let Some(window) = self.window.as_mut() else {
+            return Ok(());
+        };
+        window.show(&content, client, spot).map_err(|error| {
+            ServerError::Internal(format!("candidate window: {error:#}"))
+        })
     }
 
     /// The mode currently in effect.
@@ -118,7 +184,7 @@ impl Handler {
     /// [`Session`] borrows the schema and the index, which the handler owns, so
     /// one is built for the length of a keystroke rather than stored. That
     /// costs one lookup per key press, which measured at tens of microseconds.
-    fn session<'a>(&'a self, data: &InputContextData) -> Session<'a> {
+    fn session(&self, data: &InputContextData) -> Session<'_> {
         let mut session = Session::with_options(
             &self.schema,
             &self.index,
@@ -272,7 +338,7 @@ impl Handler {
     }
 }
 
-impl ServerHandler<X11rbServer<&RustConnection>> for Handler {
+impl ServerHandler<X11rbServer<&RustConnection>> for Handler<'_> {
     type InputContextData = InputContextData;
     type InputStyleArray = [InputStyle; 1];
 
@@ -362,6 +428,7 @@ impl ServerHandler<X11rbServer<&RustConnection>> for Handler {
         // Losing focus abandons the composition; a half-typed code should not
         // reappear when the window is focused again.
         user_ic.user_data.clear();
+        self.hide_window();
         server.preedit_draw(&mut user_ic.ic, "")
     }
 
@@ -395,6 +462,12 @@ impl ServerHandler<X11rbServer<&RustConnection>> for Handler {
                     server.commit(ic, &text)?;
                 }
                 server.preedit_draw(ic, &preedit)?;
+
+                // Most clients ask for XIMPreeditNothing and therefore show
+                // nothing themselves; the window is the only thing they see.
+                let spot = ic.preedit_spot();
+                let client = ic.client_win();
+                self.show_window(&user_ic.user_data, client, (spot.x, spot.y))?;
                 Ok(true)
             }
         }
@@ -406,7 +479,7 @@ mod tests {
     use super::*;
     use im_core::{Dictionary, Origin, schema};
 
-    fn handler() -> Handler {
+    fn handler() -> Handler<'static> {
         let schema =
             schema::builtin::get("double_pinyin").unwrap_or_else(|e| panic!("{e}"));
         let dict = Dictionary::parse(
@@ -418,7 +491,15 @@ mod tests {
         let index = schema.index([dict]).unwrap_or_else(|e| panic!("{e}"));
         let config = Config::default();
         let keyboard = Keyboard::from_keysyms(8, 4, Vec::new());
-        Handler::new(schema, index, &config, 9, config.lookup_options(), keyboard)
+        Handler::new(
+            schema,
+            index,
+            &config,
+            9,
+            config.lookup_options(),
+            keyboard,
+            None,
+        )
     }
 
     fn key(text: &str) -> KeyEvent {

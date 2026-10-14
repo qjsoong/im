@@ -77,4 +77,14 @@ initial_mode = "chinese"
 #   "candidates" — the candidates, the highlighted one bracketed, then the keys
 #   "keys"       — only the keys typed
 #   "off"        — no preedit at all
+#
+# Most clients ask for XIMPreeditNothing, which means the input method has to
+# draw the composition itself; that is what the candidate window below is for.
 preedit = "candidates"
+
+# Draw a candidate window of your own. It is what makes `st`, `xterm` and other
+# clients that do not render a preedit usable.
+window = true
+
+# Font size for that window, in pixels. Raise it on a high-density display.
+font_size = 18.0

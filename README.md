@@ -12,13 +12,13 @@ the opposite: configuration you can read, a dictionary you can `grep`, a
 candidate picker you can use over SSH, and no GUI settings dialog anywhere.
 
 ```console
-$ echo vsgo | im query -n 1
+$ echo zhongguo | im query -n 1
 中国
 
-$ im query --format tsv vsgo
-vsgo	exact	中国	zhong guo	700
-vsgo	backoff	中	zhong	900
-vsgo	backoff	国	guo	800
+$ im --schema double_pinyin query --format tsv vsgo
+vsgo	exact	中国	zhong guo	12271	system
+vsgo	backoff	中	zhong	15402	system
+vsgo	backoff	种	zhong	12930	system
 
 $ im          # interactive picker: type, choose, print to stdout
 ```
@@ -43,9 +43,10 @@ $ im          # interactive picker: type, choose, print to stdout
 
 ## Status
 
-Early. The engine, the schemas and the query interface work and are covered by
-tests; the terminal picker and the XIM server are being built. Until binaries
-are published, install from source:
+Early, but complete enough to use. The engine, the shipped dictionary, the
+terminal picker, the query interface and the XIM server all work and are covered
+by tests; there is no tagged release yet. Until binaries are published, install
+from source:
 
 ```bash
 cargo install --git https://github.com/qjsoong/im im-cli
@@ -59,7 +60,7 @@ A **code** is a short ASCII string, and that is the whole data model:
 
 ```text
 data/dict/pinyin.tsv      text      spelling      weight
-                          中国      zhong guo     700
+                          中国      zhong guo     12271
                             |
                             |  Schema::speller().fold()
                             v

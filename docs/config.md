@@ -13,7 +13,7 @@ Configuration is layered, lowest precedence first:
 
 1. the built-in defaults,
 2. `im.toml` in each system configuration directory, in the order
-   `$XDG_CONFIG_DIRS` lists them with the *later* directory taking precedence,
+   `$XDG_CONFIG_DIRS` lists them with the *earlier* directory taking precedence,
 3. `im.toml` in the user configuration directory, `$XDG_CONFIG_HOME/im` (by
    default `~/.config/im`).
 
@@ -124,15 +124,17 @@ clear, backspace, next_candidate, prev_candidate, next_page, prev_page, select
 
 ## The `[xim]` table
 
-These three settings are read by `im-xim`, the X11 front end. They live in
-`im.toml` so that a person does not have to remember which of several files a
-setting belongs to.
+These settings are read by `im-xim`, the X11 front end. They live in `im.toml`
+so that a person does not have to remember which of several files a setting
+belongs to.
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `toggle_key` | string | `"C-space"` | Chinese/ASCII toggle |
 | `initial_mode` | string | `"chinese"` | mode `im-xim` starts in |
 | `preedit` | string | `"candidates"` | XIM preedit contents |
+| `window` | boolean | `true` | draw a candidate window |
+| `font_size` | float | `18.0` | font size for that window, 4 to 200 pixels |
 
 `toggle_key` is a keystroke in the same grammar as the `[keys]` bindings below,
 and `im` validates it even though it does not use it: a bad value is reported
@@ -142,11 +144,17 @@ been typed, so it doubles as "never mind".
 
 `initial_mode` is `"chinese"` or `"ascii"`. `preedit` controls how much of the
 composition the application is asked to draw, and is `"candidates"`, `"keys"`
-or `"off"`. XIM has the *application* draw the preedit string, not the input
-method, so putting the candidates there is the only way to show them without
-`im-xim` opening a window of its own: `"candidates"` writes the candidate list
-with the highlighted one bracketed, `"keys"` writes only the keys typed, and
-`"off"` writes nothing.
+or `"off"`: `"candidates"` writes the candidate list with the highlighted one
+bracketed, `"keys"` writes only the keys typed, and `"off"` writes nothing.
+
+The preedit is only half the story. XIM has the *application* draw it, and most
+clients — `st`, `xterm`, GTK 3 — ask for `XIMPreeditNothing`, which means they
+draw nothing at all and expect the input method to put a candidate list on the
+screen itself. That is what `window` is for, and turning it off leaves an input
+method with no visible candidates in exactly those clients. `font_size` is in
+pixels; raise it on a high-density display. If no font with Chinese coverage can
+be found the daemon logs a warning and carries on without a window rather than
+refusing to start.
 
 ## The key-binding grammar
 

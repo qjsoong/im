@@ -19,7 +19,7 @@ Every other line has three tab-separated fields: `text`, `spelling`, `weight`.
 # text  spelling  weight
 中      zhong     15402
 中国    zhong guo 12271
-你      ni        13749
+你      ni        15366
 ```
 
 - **`text`** is the word that gets committed. It must not be empty and must not
@@ -30,8 +30,8 @@ Every other line has three tab-separated fields: `text`, `spelling`, `weight`.
 - **`weight`** is an integer in `0..=65535`, higher meaning more likely. The
   third field may be omitted entirely, in which case the weight is `0`.
 
-Fields are trimmed, so `中\t  zhong  \t 5 ` is the same record as
-`中\tzhong\t5`.
+Fields are trimmed, so a line whose fields are padded with spaces is the same
+record as one that is not.
 
 ### Canonical spellings
 
@@ -62,9 +62,8 @@ message is `<path>:<line>: <message>`, and the command line adds the context of
 the file it was reading:
 
 ```console
-$ im --dictionary /tmp/mine.tsv query zhong
-im: reading /tmp/mine.tsv: /tmp/mine.tsv:1: weight "nope" is not an integer in
-0..=65535
+$ im --dictionary mine.tsv query zhong
+im: reading mine.tsv: mine.tsv:1: weight "nope" is not an integer in 0..=65535
 ```
 
 | Problem | Message |
@@ -88,9 +87,9 @@ that is blank apart from spaces or tabs is skipped rather than reported.
 
 ## Weight
 
-`weight` is a `u16`: `0` to `65535`, higher is more likely. Entries in the
-shipped dictionary use the whole range — `啊` is `12990`, `中国` is `12271`, and
-a rare character is `3000`. A user entry starts at `0` unless you pass `-w`.
+`weight` is a `u16`: `0` to `65535`, higher is more likely. The shipped
+dictionary spreads from `693` (`阿丘`) to `16692` (`了`); `中国` is `12271` and
+`中` is `15402`. A user entry starts at `0` unless you pass `-w`.
 
 Weights are only ever compared with each other. They order the candidates for
 one code, and they break ties between two records that fold to the same code;
@@ -122,6 +121,9 @@ each name, in order:
    directories it looked in.
 3. `user.tsv` from the user's data directory is loaded last.
 
+In short: a file on disk is preferred to the copy compiled into the binary, and
+your own dictionary is applied on top of whichever of the two was used.
+
 `--dictionary NAME` replaces the schema's list, and `--dictionary ./mine.tsv`
 loads a file from a path instead of by name, which is how to try a dictionary
 out without installing it.
@@ -137,8 +139,14 @@ code, then load order. Two consequences:
 - A user entry with a *different* spelling gives a different code, so the word
   becomes reachable a second way instead of replacing the first.
 
+With this record in `user.tsv`, the word is reachable from the new code, and
+the shipped spelling still works:
+
+```text
+中	zzz	1
+```
+
 ```console
-$ printf '中\tzzz\t1\n' > "${XDG_DATA_HOME:-~/.local/share}/im/user.tsv"
 $ im query --format tsv -n 1 zzz
 zzz	exact	中	zzz	1048577	user
 $ im query --format tsv -n 1 zhong
@@ -148,6 +156,9 @@ zhong	exact	中	zhong	15402	system
 The `1048577` is the user's weight `1` plus the `1 << 20` bonus.
 
 ## The user dictionary
+
+Paths in the examples below use `/home/u` where your own home directory would
+appear.
 
 Your own dictionary is a normal dictionary file:
 

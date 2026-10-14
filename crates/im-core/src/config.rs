@@ -43,6 +43,15 @@ pub struct XimConfig {
     pub initial_mode: InputMode,
     /// What the preedit string contains.
     pub preedit: PreeditStyle,
+    /// Whether `im-xim` draws a candidate window of its own.
+    ///
+    /// It has to, for clients that ask for `XIMPreeditNothing` — which is most
+    /// of them, including `st`, `xterm` and GTK. Turning it off leaves an input
+    /// method with no visible candidate list, which is only useful when
+    /// something else draws one.
+    pub window: bool,
+    /// Font size for that window, in pixels.
+    pub font_size: f32,
 }
 
 impl Default for XimConfig {
@@ -51,6 +60,8 @@ impl Default for XimConfig {
             toggle_key: "C-space".to_owned(),
             initial_mode: InputMode::Chinese,
             preedit: PreeditStyle::Candidates,
+            window: true,
+            font_size: 18.0,
         }
     }
 }
@@ -204,6 +215,12 @@ impl Config {
             ));
         }
         self.keymap = Keymap::from_table(&self.keys, origin)?;
+        if !(4.0..=200.0).contains(&self.xim.font_size) {
+            return Err(Error::config_value(
+                origin,
+                "xim.font_size must be between 4 and 200 pixels",
+            ));
+        }
         if let Err(e) = KeyEvent::parse(&self.xim.toggle_key) {
             return Err(Error::KeyBinding {
                 origin: origin.to_owned(),

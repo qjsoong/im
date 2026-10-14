@@ -131,8 +131,10 @@ vsgo	backoff	重	zhong	12663	system
 ```
 
 `vsgo` is `zhong guo` compressed to two keys per syllable. It produces one
-exact match and 86 backoff candidates, but no fourth-level backoff, because
-there is no word spelled `zhong gu`.
+exact match, then the 86 backoff candidates for the code `vs`, then 81
+completions. The `zhong gu` group that `zhongguo` had is missing here because
+`zhong gu` folds to `vsgu` under this scheme, and `vsgu` is not a prefix of
+`vsgo`.
 
 ## `consumed`, and why committing is incremental
 
@@ -148,12 +150,12 @@ the input buffer and re-searches what is left, returning the remainder as
 | `completion` | the whole input                                       |
 
 This is what lets a phrase be typed as one run of keys rather than one word at
-a time. Type `zhongguo`, pick 中, and the session keeps `guo` as its input for
-the next lookup; type `vsgo`, pick 中, and `go` is left. The picker starts with
-`> 中国` highlighted, so selecting it commits the whole word and finishes;
-selecting 中 instead commits one word and keeps composing. Both behaviours fall
-out of the same `consumed` rule, which is why `Commit` also reports the
-remainder: a one-shot prompt such as the picker can tell what it dropped.
+a time. Type `zhongguo` and 中国 is the highlighted candidate, so pressing
+`Enter` commits the whole word and finishes; picking 中 instead commits one word
+and leaves `guo` as the input for the next lookup. Type `vsgo` and the same two
+choices leave `go` instead. Both behaviours fall out of the same `consumed`
+rule, which is why `Commit` also reports the remainder: a one-shot prompt such
+as the picker can tell what it dropped.
 
 ## Why a sorted array
 
@@ -164,8 +166,8 @@ compressed structure to reason about. Three things follow.
 - The array is compact and scanned in order, so a search touches few cache
   lines. It is also cheap to build: no insertion into a prefix tree, just one
   sort.
-- "Sorted by code" is easy to test. `CodeIndex::build` sorts and the only other
-  operation that touches the array is `partition_point`.
+- "Sorted by code" is easy to test, and after the build the only operation
+  that touches the array is a binary search: `partition_point`.
 - Prefix ranges need no per-node bookkeeping. A half-open range of codes with a
   given prefix is the range between two `lower_bound` calls.
 
@@ -211,8 +213,19 @@ never has to know how a schema folds or how the index is arranged.
   does, which is why `x=$(im)` and `im > note.txt` work.
 
 The X11 front end, `im-xim`, sits at the same seam: it serves XIM, so
-applications find it through `XMODIFIERS`, and it draws the candidates inside
-the XIM preedit string rather than in a window of its own.
+applications find it through `XMODIFIERS`, and it hands each keystroke to the
+same `Handler::react` that returns a `Reaction` — a `commit`, a `preedit`, or
+`Pass`, meaning the application should have the key. Only the trait methods that
+wrap it turn a `Reaction` into XIM requests, which is why the interesting half
+is testable without an X server.
+
+The XIM client decides how much of the composition it wants to draw, and most of
+them ask for `XIMPreeditNothing`: they draw nothing and expect the input method
+to put a candidate list on the screen at the spot location they report. So
+`im-xim` maintains a small override-redirect window, rasterises glyphs with
+`fontdue` and sends one depth-24 `PutImage` per change. The preedit string and
+that window therefore carry the same information, for clients that render it in
+one place or the other.
 
 ## What it costs
 
@@ -240,8 +253,8 @@ identity because each syllable is split and looked up in two tables rather than
 concatenated.
 
 Note that the double-pinyin index has one code fewer than the full-pinyin index.
-Two spellings of 咯 — `lo` and `luo` — fold to the same code, and the index
-keeps the higher-ranked record for a repeated `(code, text)` pair.
+Two spellings of 咯 — `lo` and `luo` — fold to the same code, and a repeated
+`(code, text)` pair is kept once.
 
 ## Known limitations
 

@@ -21,8 +21,7 @@ Three schemes ship with `im`:
 ```toml
 id = "double_pinyin"
 name = "自然码双拼"
-description = "Natural Code double pinyin.
-    Two keys per syllable, for example 'vsgo' for 中国."
+description = "Two keys per syllable, for example 'vsgo' for 中国."
 kind = "syllable"
 dictionaries = ["pinyin"]
 page_size = 9
@@ -45,25 +44,25 @@ an = "aj"
 | `id` | string | required | identifier used by `--schema` and `im.toml` |
 | `name` | string | required | human-readable name |
 | `description` | string | `""` | shown by `im schema list` |
-| `kind` | `syllable` or `table` | `syllable` | folding mode |
+| `kind` | `"syllable"` or `"table"` | `"syllable"` | folding mode |
 | `dictionaries` | array of strings | `["pinyin"]` | dictionary names to load |
 | `page_size` | integer >= 1 | unset | candidates per page |
 | `speller` | table | empty | folding tables, see below |
 
 There are no other fields. The file is parsed with
 `#[serde(deny_unknown_fields)]`, so a typo is an error rather than a silently
-ignored key:
+ignored key (the directory list `im` prints after `im:` is elided here):
 
-```console
-$ im schema show x
+```text
 im: ...: schema x: unknown field `dictionaries2`, expected one of `id`,
 `name`, `description`, `kind`, `dictionaries`, `page_size`, `speller`
 ```
 
 `id` and `name` must not be empty, `page_size` must be at least 1, and the
 speller tables must contain only typeable keys — that last rule is covered
-below. A file that fails to parse stops `im` with the file named, so a broken
-user schema is never loaded quietly.
+below. A `page_size` here overrides the global one from `im.toml` when set. A
+file that fails to parse stops `im` with the file named, so a broken user
+schema is never loaded quietly.
 
 `dictionaries` names dictionaries, not files: each name resolves to
 `dict/<name>.tsv` inside every data directory. See
@@ -175,8 +174,15 @@ vsgo	exact	中国	zhong guo	12271	system
 ```
 
 A syllable with no initial goes through `null_initials` instead. `an` has no
-initial in the list, and `null_initials` gives it `aj`, so 安 (`an`) is reached
-by typing `aj`.
+initial in the list, and `null_initials` gives it `aj`, so 安 is reached the
+same way as every other reading of `an`:
+
+```console
+$ im --schema double_pinyin query --format tsv -n 3 aj
+aj	exact	按	an	12953	system
+aj	exact	干	an	12894	system
+aj	exact	安	an	12087	system
+```
 
 The `j q x y` rule shows up in the ü-series. `jun` splits into the initial `j`
 and the remainder `un`; `un` is mapped to `p`, so `jun` folds to `jp` and 军 is
@@ -188,7 +194,12 @@ jp	exact	军	jun	13211	system
 ```
 
 Meanwhile `ju` splits into `j` and `u`, the `u` becomes `v`, and `finals` maps
-`v` to `v`, so 句 folds to `jv` — the `u` never appears.
+`v` to `v`, so 据 folds to `jv` — the `u` never appears.
+
+```console
+$ im --schema double_pinyin query --format tsv -n 1 jv
+jv	exact	据	ju	12873	system
+```
 
 ### How 小鹤 differs
 
@@ -241,8 +252,7 @@ Codes only ever contain `[a-z0-9]`, and the index relies on that when it
 computes prefix ranges, so a table value outside the alphabet would create a
 code that can never be typed. The check happens when the schema is loaded:
 
-```console
-$ im schema show x
+```text
 im: ...: schema x: [speller.finals] ong = "S" is not a sequence of lowercase
 letters or digits
 ```
@@ -252,13 +262,14 @@ The same rule rejects an empty value (`zh = ""`) and an uppercase initial
 
 ## Adding a scheme
 
-A scheme is a file, and there are two places to put it.
+A scheme is a file, and there are three places to put it.
 
 - **User scheme.** Write `$XDG_CONFIG_HOME/im/schemas/<id>.toml`, by default
   `~/.config/im/schemas/<id>.toml`. This is the normal way to try a scheme out.
-- **Distribution scheme.** Install `<data dir>/im/schemas/<id>.toml`, for
-  example `/usr/share/im/schemas/`. These are searched after the built-ins and
-  before the user's directory.
+- **Distribution scheme.** Install it as `<data dir>/schemas/<id>.toml`, which
+  with the default `XDG_DATA_DIRS` means `/usr/share/im/schemas/<id>.toml`.
+  Data directories are searched after the built-ins and before the user's
+  configuration directory.
 - **Built-in scheme.** Add `crates/im-core/data/schemas/<id>.toml` and register
   the id with its `include_str!` source in the `SOURCES` array in
   `crates/im-core/src/schema/builtin.rs`. Built-ins are compiled into the
@@ -270,11 +281,6 @@ outright: a user file at `~/.config/im/schemas/pinyin.toml` shadows the built-in
 person can replace a shipped scheme without renaming it:
 
 ```console
-$ cat ~/.config/im/schemas/pinyin.toml
-id = "pinyin"
-name = "我的全拼"
-kind = "syllable"
-dictionaries = ["pinyin"]
 $ im schema list
 ...
 * pinyin           我的全拼           ...
