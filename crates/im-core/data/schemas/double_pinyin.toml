@@ -1,0 +1,80 @@
+# 自然码双拼 (Natural Code double pinyin).
+#
+# Every syllable becomes exactly two keys: one for the initial, one for the
+# final. The tables below are the whole scheme; see docs/schemas.md for how to
+# derive a new one.
+id = "double_pinyin"
+name = "自然码双拼"
+description = "Natural Code double pinyin. Two keys per syllable, for example 'vsgo' for 中国."
+kind = "syllable"
+dictionaries = ["pinyin"]
+
+[speller]
+# Pinyin initials, matched longest-first. Anything not listed here is treated
+# as a syllable with no initial.
+initials = [
+    "b", "p", "m", "f", "d", "t", "n", "l", "g", "k", "h",
+    "j", "q", "x", "r", "z", "c", "s", "y", "w",
+    "zh", "ch", "sh",
+]
+
+# Initials whose key differs from the way they are spelled.
+[speller.initial_keys]
+zh = "v"
+ch = "i"
+sh = "u"
+
+# Finals. "van", "vn" and "ve" are the ü-series as written after j/q/x/y; the
+# engine rewrites a written "u" to "v" in that position before looking here.
+[speller.finals]
+a = "a"
+o = "o"
+e = "e"
+i = "i"
+u = "u"
+v = "v"
+ai = "l"
+ei = "z"
+ao = "k"
+ou = "b"
+an = "j"
+en = "f"
+ang = "h"
+eng = "g"
+ong = "s"
+ia = "w"
+ie = "x"
+iao = "c"
+iu = "q"
+ian = "m"
+in = "n"
+iang = "d"
+ing = "y"
+iong = "s"
+ua = "w"
+uo = "o"
+uai = "y"
+ui = "v"
+uan = "r"
+un = "p"
+uang = "d"
+ue = "t"
+ve = "t"
+van = "r"
+vn = "p"
+
+# Syllables that start with a vowel take the doubled first letter plus the
+# final's key: "an" is typed "a" then "j".
+[speller.null_initials]
+a = "aa"
+o = "oo"
+e = "ee"
+er = "er"
+ai = "al"
+ei = "ez"
+ao = "ak"
+ou = "ob"
+an = "aj"
+en = "ef"
+ang = "ah"
+eng = "eg"

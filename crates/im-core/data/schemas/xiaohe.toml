@@ -1,0 +1,72 @@
+# 小鹤双拼 (Flypy / Xiaohe double pinyin).
+#
+# Included mainly as evidence that a second scheme is a data change and not a
+# code change: every difference from 自然码 lives in the three tables below.
+id = "xiaohe"
+name = "小鹤双拼"
+description = "Flypy double pinyin. Two keys per syllable, for example 'hc' for 好."
+kind = "syllable"
+dictionaries = ["pinyin"]
+
+[speller]
+initials = [
+    "b", "p", "m", "f", "d", "t", "n", "l", "g", "k", "h",
+    "j", "q", "x", "r", "z", "c", "s", "y", "w",
+    "zh", "ch", "sh",
+]
+
+[speller.initial_keys]
+zh = "v"
+ch = "i"
+sh = "u"
+
+[speller.finals]
+a = "a"
+o = "o"
+e = "e"
+i = "i"
+u = "u"
+v = "v"
+ai = "d"
+ei = "w"
+ao = "c"
+ou = "z"
+an = "j"
+en = "f"
+ang = "h"
+eng = "g"
+ong = "s"
+ia = "x"
+ie = "p"
+iao = "n"
+iu = "q"
+ian = "m"
+in = "b"
+iang = "l"
+ing = "k"
+iong = "s"
+ua = "x"
+uo = "o"
+uai = "k"
+ui = "v"
+uan = "r"
+un = "y"
+uang = "l"
+ue = "t"
+ve = "t"
+van = "r"
+vn = "y"
+
+[speller.null_initials]
+a = "aa"
+o = "oo"
+e = "ee"
+er = "er"
+ai = "ad"
+ei = "ew"
+ao = "ac"
+ou = "oz"
+an = "aj"
+en = "ef"
+ang = "ah"
+eng = "eg"

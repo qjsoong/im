@@ -1,0 +1,10 @@
+# Full pinyin: every syllable is typed exactly as it is spelled.
+#
+# This is the identity case for the engine — there is no [speller] table at all,
+# so a dictionary spelling like "zhong guo" becomes the code "zhongguo" and the
+# user types those keys in order.
+id = "pinyin"
+name = "全拼"
+description = "Full pinyin. Type every syllable in full, for example 'zhongguo'."
+kind = "syllable"
+dictionaries = ["pinyin"]

@@ -1,0 +1,62 @@
+# im — configuration
+#
+# This is both the shipped default and the reference. `im` merges it, then
+# /etc/xdg/im/im.toml, then ~/.config/im/im.toml, key by key, so your own file
+# only needs the lines you actually change:
+#
+#     schema = "double_pinyin"
+#
+#     [keys]
+#     next_candidate = ["Tab", "C-n", "Down"]
+#
+# Run `im config show` to print the merged result, and `im config path` to see
+# which file is read first.
+
+# The input scheme used when a front end does not ask for a specific one.
+# `im schema list` shows the schemes available on this machine.
+schema = "pinyin"
+
+# Candidates shown on one page.
+page_size = 9
+
+# Upper bound on candidates kept for a single input.
+max_candidates = 100
+
+# Offer completions of unfinished codes. With this on, typing "zhong" lists
+# 中, 种, 重 first and then 中国, 中心 — the exact matches for the finished
+# syllable come first, and words that merely start with the same keystrokes
+# come after. With it off, only complete codes produce candidates.
+completion = true
+
+# Keystrokes, by action. Listing an action replaces its built-in bindings, so
+# the lists below are the complete set for each action.
+#
+# A binding is an optional sequence of modifiers followed by "+" and a key:
+# C- is Control, M- is Alt, S- is Shift, Super- is the Windows/Command key.
+# Key names: Enter, Escape, Tab, Space, Backspace, Delete, Up, Down, Left,
+# Right, Home, End, Page_Up, Page_Down, f1..f24, or a single character.
+[keys]
+
+# Commit the highlighted candidate and keep composing; with nothing typed,
+# finish and accept what has been committed so far.
+commit = ["Enter", "space"]
+
+# Finish, emitting the raw input exactly as typed.
+commit_raw = ["C-Enter"]
+
+# Abandon the composition.
+cancel = ["Escape", "C-c", "C-g"]
+
+# Throw away the input, keeping whatever is already committed.
+clear = ["C-u"]
+
+backspace = ["Backspace", "C-h"]
+
+next_candidate = ["Down", "C-n", "Tab"]
+prev_candidate = ["Up", "C-p", "S-Tab"]
+
+next_page = ["Page_Down", "C-f", "="]
+prev_page = ["Page_Up", "C-b", "-"]
+
+# Positional: the first binding picks the first candidate on the page.
+select = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
