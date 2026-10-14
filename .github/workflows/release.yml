@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  # Lets the build half be exercised without publishing anything.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  binary:
+    name: Build a release binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      # `x11rb` speaks the X11 protocol directly and needs no C libraries, so
+      # this is a plain `cargo build` on a bare runner.
+      - name: Build
+        run: cargo build --release --locked -p im-cli -p im-xim
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          target=x86_64-unknown-linux-gnu
+          stage="im-${GITHUB_REF_NAME}-${target}"
+          mkdir -p "$stage"
+          cp target/release/im target/release/im-xim "$stage/"
+          cp README.md LICENSE-MIT LICENSE-APACHE "$stage/"
+          cp -r data/dict "$stage/dict"
+          tar czf "${stage}.tar.gz" "$stage"
+          sha256sum ./*.tar.gz > SHA256SUMS
+
+      - name: Attach to the release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ./*.tar.gz
+            SHA256SUMS
