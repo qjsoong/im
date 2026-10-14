@@ -98,6 +98,10 @@ dictionary excerpt and the exact keystrokes are the most useful kind.
 ## License
 
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
-[MIT license](LICENSE-MIT) at your option. The generated dictionary in
-`data/dict/` is a derived work of several MIT-licensed projects; see
-[`data/dict/NOTICE.md`](data/dict/NOTICE.md).
+[MIT license](LICENSE-MIT) at your option.
+
+The generated dictionary in `data/dict/` is the exception: it is a derived work
+of sources that include CC-CEDICT, so it is distributed under
+**Creative Commons Attribution-ShareAlike 4.0**. The code that builds it is MIT
+OR Apache-2.0 like everything else. See [`data/dict/NOTICE.md`](data/dict/NOTICE.md)
+for the attribution and for what share-alike means in practice.
