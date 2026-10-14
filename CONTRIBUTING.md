@@ -97,6 +97,6 @@ you added to `user.tsv`.
 By contributing you agree that your contribution is licensed under the same
 terms as the project: MIT OR Apache-2.0 for code, and CC BY-SA 4.0 for the
 generated files under `data/dict/`, which are a derived work of share-alike
-upstream data. See [`data/dict/NOTICE.md`](../data/dict/NOTICE.md). Do not add
+upstream data. See [`data/dict/NOTICE.md`](data/dict/NOTICE.md). Do not add
 a new upstream data source to the dictionary pipeline without recording its
 license there first.
