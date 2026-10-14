@@ -21,12 +21,78 @@ use std::path::Path;
 use serde::Deserialize;
 
 use crate::error::{Error, Result};
+use crate::key::KeyEvent;
 use crate::keymap::Keymap;
 use crate::paths::Paths;
 use crate::schema::Schema;
 
 /// The built-in configuration, also used as documentation.
 pub const DEFAULT_TOML: &str = include_str!("../data/im.toml");
+
+/// The `[xim]` table: settings used only by `im-xim`, the X11 front end.
+///
+/// They live in `im.toml` rather than in a file of their own because a user
+/// should not have to remember which of several files a setting belongs to.
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct XimConfig {
+    /// Key that switches between Chinese and ASCII input. Pressing it while
+    /// composing also drops what has been typed.
+    pub toggle_key: String,
+    /// Mode `im-xim` starts in.
+    pub initial_mode: InputMode,
+    /// What the preedit string contains.
+    pub preedit: PreeditStyle,
+}
+
+impl Default for XimConfig {
+    fn default() -> Self {
+        Self {
+            toggle_key: "C-space".to_owned(),
+            initial_mode: InputMode::Chinese,
+            preedit: PreeditStyle::Candidates,
+        }
+    }
+}
+
+/// Whether keystrokes are being turned into Chinese.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum InputMode {
+    /// Letters compose codes.
+    #[default]
+    Chinese,
+    /// Every keystroke goes straight to the application.
+    Ascii,
+}
+
+impl InputMode {
+    /// The other mode.
+    pub const fn toggled(self) -> Self {
+        match self {
+            Self::Chinese => Self::Ascii,
+            Self::Ascii => Self::Chinese,
+        }
+    }
+}
+
+/// How much of the composition an XIM client is asked to draw.
+///
+/// XIM clients draw the preedit string themselves, which is why this is the one
+/// place a front end can put candidates without opening a window of its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PreeditStyle {
+    /// The candidates, with the highlighted one bracketed, then the keys typed:
+    /// `1.中国 2.[种] 3.中国话 | vsgo`.
+    #[default]
+    Candidates,
+    /// Only the keys typed: `vsgo`.
+    Keys,
+    /// No preedit at all. The application shows nothing while composing, so
+    /// this is only useful with a front end that draws its own candidate list.
+    Off,
+}
 
 /// Everything `im.toml` can say.
 #[derive(Debug, Clone, Deserialize, serde::Serialize)]
@@ -42,6 +108,9 @@ pub struct Config {
     pub completion: bool,
     /// Keystroke bindings, keyed by action name.
     pub keys: BTreeMap<String, Vec<String>>,
+    /// Settings for the X11 front end.
+    #[serde(default)]
+    pub xim: XimConfig,
 
     /// Parsed `keys`; built by [`Config::finish`].
     #[serde(skip)]
@@ -61,6 +130,7 @@ impl Default for Config {
                 max_candidates: 100,
                 completion: true,
                 keys: BTreeMap::new(),
+                xim: XimConfig::default(),
                 keymap: Keymap::default(),
             },
         }
@@ -134,6 +204,13 @@ impl Config {
             ));
         }
         self.keymap = Keymap::from_table(&self.keys, origin)?;
+        if let Err(e) = KeyEvent::parse(&self.xim.toggle_key) {
+            return Err(Error::KeyBinding {
+                origin: origin.to_owned(),
+                binding: self.xim.toggle_key.clone(),
+                message: format!("xim.toggle_key: {}", e.message),
+            });
+        }
         Ok(())
     }
 

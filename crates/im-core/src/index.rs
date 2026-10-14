@@ -99,6 +99,8 @@ pub struct CodeIndex {
     dict: Dictionary,
     /// Sorted by code, then by descending ranking weight, then by file order.
     records: Vec<Record>,
+    /// Bit per ASCII byte marking the characters at least one code starts with.
+    first_chars: u128,
 }
 
 impl CodeIndex {
@@ -132,10 +134,24 @@ impl CodeIndex {
         let entries = dict.entries();
         records.sort_unstable_by(compare_records);
         dedup_records(&mut records, entries);
+
+        // Which characters could begin a code. A front end that has to hand
+        // keys it does not want back to an application — anything talking to a
+        // window — needs this to avoid swallowing the first digit of a number.
+        let mut first_chars = 0u128;
+        for record in &records {
+            if let Some(byte) = record.code.bytes().next()
+                && byte < 128
+            {
+                first_chars |= 1u128 << byte;
+            }
+        }
+
         Ok(Self {
             schema_id: schema.id.clone(),
             dict,
             records,
+            first_chars,
         })
     }
 
@@ -152,6 +168,14 @@ impl CodeIndex {
     /// True when no dictionary entry produced a code.
     pub fn is_empty(&self) -> bool {
         self.records.is_empty()
+    }
+
+    /// True when some code begins with `ch`.
+    ///
+    /// Front ends use this to decide whether a keystroke may *start* a
+    /// composition, as opposed to continuing one.
+    pub fn can_start(&self, ch: char) -> bool {
+        ch.is_ascii() && (self.first_chars >> (ch as u32)) & 1 == 1
     }
 
     /// Every candidate whose code is exactly `input`, best first.
@@ -484,6 +508,26 @@ mod tests {
         let found = index.lookup("zhongguo", LookupOptions::default());
         assert_eq!(texts(&found), vec!["中国"]);
         assert_eq!(found[0].weight, 2);
+    }
+
+    #[test]
+    fn knows_which_characters_can_begin_a_code() {
+        let sample = index("pinyin", SAMPLE);
+        for ch in "zgs".chars() {
+            assert!(sample.can_start(ch), "{ch} starts a code");
+        }
+        // A digit is not the first key of any pinyin code, which is what keeps
+        // an input method from swallowing the first digit of a number.
+        for ch in "1234".chars() {
+            assert!(!sample.can_start(ch), "{ch} does not start a code");
+        }
+        assert!(!sample.can_start('!'));
+
+        let table = index("pinyin", "一\t1\t1\n");
+        assert!(
+            table.can_start('1'),
+            "a table scheme may start with a digit"
+        );
     }
 
     #[test]

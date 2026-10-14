@@ -1,0 +1,31 @@
+[package]
+name = "im-xim"
+description = "The im X11 front end: an X Input Method server so any XIM-capable toolkit can type Chinese"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["input-method", "xim", "x11", "pinyin", "shuangpin"]
+categories.workspace = true
+
+[[bin]]
+name = "im-xim"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+im-core = { workspace = true, features = ["embed-dictionary"] }
+log = { version = "0.4.34", features = ["std"] }
+x11rb = { workspace = true }
+xim = { workspace = true }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+tempfile = "3"

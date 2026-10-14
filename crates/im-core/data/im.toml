@@ -60,3 +60,21 @@ prev_page = ["Page_Up", "C-b", "-"]
 
 # Positional: the first binding picks the first candidate on the page.
 select = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+
+# Settings used only by `im-xim`, the X11 input method server.
+[xim]
+
+# Key that switches between Chinese and ASCII input. Pressing it while
+# composing also drops what has been typed, so it doubles as "never mind".
+toggle_key = "C-space"
+
+# Which mode `im-xim` starts in: "chinese" or "ascii".
+initial_mode = "chinese"
+
+# What the preedit string contains. The XIM protocol has the application draw
+# the preedit, not the input method, so this is the only way to show candidates
+# without opening a window:
+#   "candidates" — the candidates, the highlighted one bracketed, then the keys
+#   "keys"       — only the keys typed
+#   "off"        — no preedit at all
+preedit = "candidates"

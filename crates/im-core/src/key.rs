@@ -217,8 +217,14 @@ impl KeyEvent {
     }
 
     /// Build a plain character keystroke.
+    ///
+    /// A space is normalised to [`Named::Space`], which is how configuration
+    /// files spell it.
     pub fn ch(ch: char) -> Self {
-        Self::key(Key::Char(ch.to_ascii_lowercase()))
+        Self::key(match ch {
+            ' ' => Key::Named(Named::Space),
+            ch => Key::Char(ch.to_ascii_lowercase()),
+        })
     }
 
     /// Parse a binding such as `Enter`, `C-n`, `Ctrl+Alt+Delete` or
@@ -288,6 +294,7 @@ fn split_modifiers(text: &str) -> Result<Option<KeyEvent>, KeyParseError> {
     Ok(Some(KeyEvent { key, mods }))
 }
 
+/// Parse a single key token.
 fn parse_key(text: &str) -> Option<Key> {
     if let Some(ch) = symbol_key(text) {
         return Some(Key::Char(ch));
@@ -300,7 +307,12 @@ fn parse_key(text: &str) -> Option<Key> {
     if chars.next().is_some() {
         return None;
     }
-    Some(Key::Char(first.to_ascii_lowercase()))
+    // A space is one key, and `space` is how it is spelled. Normalising here
+    // means `commit = [" "]` and `commit = ["space"]` are the same binding.
+    Some(match first {
+        ' ' => Key::Named(Named::Space),
+        ch => Key::Char(ch.to_ascii_lowercase()),
+    })
 }
 
 impl fmt::Display for KeyEvent {
@@ -370,6 +382,15 @@ mod tests {
             );
             assert!(!event.mods.super_key(), "{text}");
         }
+    }
+
+    #[test]
+    fn a_space_is_the_named_space_key() {
+        assert_eq!(parse("space").key, Key::Named(Named::Space));
+        assert_eq!(parse("space"), KeyEvent::ch(' '));
+        assert_eq!(parse("C-space").mods, Mods::CTRL);
+        // Bindings are trimmed, so the space bar has to be spelled `space`.
+        assert!(KeyEvent::parse(" ").is_err());
     }
 
     #[test]

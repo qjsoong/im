@@ -146,6 +146,16 @@ impl<'a> Session<'a> {
         ch.is_ascii_alphanumeric()
     }
 
+    /// Can this character *begin* a code?
+    ///
+    /// Stronger than [`Session::accepts`]: it also has to be the first key of
+    /// something. A front end that hands keys it cannot use back to an
+    /// application should ask this before starting a composition, so that the
+    /// first digit of a number is typed rather than swallowed.
+    pub fn can_start(&self, ch: char) -> bool {
+        Self::accepts(ch) && self.index.can_start(ch)
+    }
+
     /// Append a keystroke. Returns `false` when the character is not part of
     /// the code alphabet, in which case nothing changed.
     pub fn push(&mut self, ch: char) -> bool {
