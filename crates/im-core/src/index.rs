@@ -80,9 +80,15 @@ impl Default for LookupOptions {
 }
 
 /// One entry of the sorted code array.
+///
+/// The ranking weight is copied in so that sorting never has to follow a
+/// pointer back into the dictionary: the comparator runs a few million times on
+/// a large dictionary, and the random reads it would otherwise do cost more
+/// than the eight bytes this keeps.
 #[derive(Debug, Clone)]
 struct Record {
     code: Box<str>,
+    weight: u32,
     entry: u32,
 }
 
@@ -91,27 +97,41 @@ struct Record {
 pub struct CodeIndex {
     schema_id: String,
     dict: Dictionary,
-    /// Sorted by code, then by descending ranking weight, then by text.
+    /// Sorted by code, then by descending ranking weight, then by file order.
     records: Vec<Record>,
 }
 
 impl CodeIndex {
-    /// Fold every entry of `dict` through `schema` and sort the result.
-    pub fn build(schema: &Schema, dict: Dictionary) -> Result<Self> {
+    /// Fold the entries of every dictionary through `schema` and sort the
+    /// result, dropping entries that repeat a `(code, text)` pair.
+    pub fn build(
+        schema: &Schema,
+        dictionaries: impl IntoIterator<Item = Dictionary>,
+    ) -> Result<Self> {
+        let mut dict = Dictionary::new();
+        for other in dictionaries {
+            dict.append(other);
+        }
+
         let mut records = Vec::with_capacity(dict.len());
+        // One buffer for the whole build: folding a large dictionary would
+        // otherwise allocate a string per entry.
+        let mut code = String::new();
         for (index, entry) in dict.entries().iter().enumerate() {
-            let code = sanitize_code(&schema.fold(&entry.spelling));
+            schema.fold_into(&entry.spelling, &mut code);
             if code.is_empty() {
                 continue;
             }
             records.push(Record {
-                code: code.into_boxed_str(),
+                code: Box::from(code.as_str()),
+                weight: entry.ranking_weight(),
                 entry: index as u32,
             });
         }
-        // Sorting must happen before the dictionary is moved into `Self`.
+
         let entries = dict.entries();
-        records.sort_unstable_by(|a, b| compare_records(a, b, entries));
+        records.sort_unstable_by(compare_records);
+        dedup_records(&mut records, entries);
         Ok(Self {
             schema_id: schema.id.clone(),
             dict,
@@ -198,21 +218,16 @@ impl CodeIndex {
         let prefix = &input[..deepest];
         let (start, end) = self.prefix_range(prefix);
         // Records whose code equals the prefix are already in the result.
-        let pool: Vec<usize> = (start..end)
+        let mut pool: Vec<usize> = (start..end)
             .filter(|&i| self.records[i].code.as_ref() != prefix)
             .collect();
-        let mut pool = pool;
         if pool.len() > budget {
-            let entries = self.dict.entries();
             pool.select_nth_unstable_by(budget, |&a, &b| {
-                compare_ranking(&self.records[a], &self.records[b], entries)
+                compare_ranking(&self.records[a], &self.records[b])
             });
             pool.truncate(budget);
         }
-        let entries = self.dict.entries();
-        pool.sort_by(|&a, &b| {
-            compare_ranking(&self.records[a], &self.records[b], entries)
-        });
+        pool.sort_by(|&a, &b| compare_ranking(&self.records[a], &self.records[b]));
         pool.into_iter()
             .map(|i| self.candidate(i, input.len(), MatchKind::Completion))
             .collect()
@@ -265,6 +280,10 @@ impl CodeIndex {
 }
 
 /// Strip anything that is not `[a-z0-9]` and lowercase ASCII letters.
+///
+/// Applied to *typed input*. Codes built from a schema are already clean
+/// because [`crate::Speller::validate`] rejects table values that could not be
+/// typed.
 fn sanitize_code(code: &str) -> String {
     code.chars()
         .filter(char::is_ascii_alphanumeric)
@@ -273,23 +292,52 @@ fn sanitize_code(code: &str) -> String {
 }
 
 /// Build order: code ascending, then ranking.
-fn compare_records(a: &Record, b: &Record, entries: &[Entry]) -> Ordering {
-    a.code
-        .cmp(&b.code)
-        .then_with(|| compare_ranking(a, b, entries))
+fn compare_records(a: &Record, b: &Record) -> Ordering {
+    a.code.cmp(&b.code).then_with(|| compare_ranking(a, b))
 }
 
-/// Ranking order: weight descending, then shorter code first, then text.
-fn compare_ranking(a: &Record, b: &Record, entries: &[Entry]) -> Ordering {
-    let wa = entries[a.entry as usize].ranking_weight();
-    let wb = entries[b.entry as usize].ranking_weight();
-    wb.cmp(&wa)
+/// Ranking order: weight descending, then shorter code first, then file order.
+///
+/// A total order, so paging is stable and two runs over the same dictionaries
+/// produce the same list.
+fn compare_ranking(a: &Record, b: &Record) -> Ordering {
+    b.weight
+        .cmp(&a.weight)
         .then_with(|| a.code.len().cmp(&b.code.len()))
-        .then_with(|| {
-            entries[a.entry as usize]
-                .text
-                .cmp(&entries[b.entry as usize].text)
-        })
+        .then_with(|| a.entry.cmp(&b.entry))
+}
+
+/// Drop records that repeat a `(code, text)` pair.
+///
+/// One word can be reachable through several spellings (`xi an` and `xian`
+/// both fold to `xian`), and a user dictionary can restate a shipped entry.
+/// Records arrive sorted by code with the highest ranking weight first, so
+/// within one code group the first record for a text is the one to keep.
+fn dedup_records(records: &mut Vec<Record>, entries: &[Entry]) {
+    let mut written = 0usize;
+    let mut group_start = 0usize;
+    for read in 0..records.len() {
+        let text = &entries[records[read].entry as usize].text;
+        // Records kept so far are a prefix of the output, and the last of them
+        // carries the code of the group being read — unless this record starts
+        // a new group.
+        let same_group = written > 0 && records[written - 1].code == records[read].code;
+        if same_group {
+            let repeated = records[group_start..written]
+                .iter()
+                .any(|kept| entries[kept.entry as usize].text == *text);
+            if repeated {
+                continue;
+            }
+        } else {
+            group_start = written;
+        }
+        if written != read {
+            records.swap(written, read);
+        }
+        written += 1;
+    }
+    records.truncate(written);
 }
 
 /// Keep the best-ranked occurrence of each distinct text.

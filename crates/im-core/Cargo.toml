@@ -17,5 +17,12 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 toml = { workspace = true }
 
+[features]
+default = []
+# Compile `data/dict/pinyin.tsv` into the binary so that `im` works with no
+# data files installed. Front ends enable this; library users who bring their
+# own dictionaries do not have to pay for it.
+embed-dictionary = []
+
 [lints]
 workspace = true

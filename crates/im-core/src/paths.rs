@@ -2,21 +2,26 @@
 //!
 //! The XDG Base Directory specification, applied with the usual Unix
 //! convention: earlier directories win, and the user's own directory comes
-//! first. `im` never writes anywhere except the user's own directories.
+//! first.
 //!
-//! | What           | User                                  | System                        |
-//! | -------------- | ------------------------------------- | ----------------------------- |
-//! | configuration  | `$XDG_CONFIG_HOME/im`                 | `$XDG_CONFIG_DIRS/im`         |
-//! | data           | `$XDG_DATA_HOME/im`                   | `$XDG_DATA_DIRS/im`           |
-//! | cache          | `$XDG_CACHE_HOME/im`                  | —                             |
-//! | state          | `$XDG_STATE_HOME/im`                  | —                             |
+//! | What          | User directory                            | System directories                         |
+//! | ------------- | ----------------------------------------- | ------------------------------------------ |
+//! | configuration | `$XDG_CONFIG_HOME/im`                     | `$XDG_CONFIG_DIRS/im`                      |
+//! | data          | `$XDG_DATA_HOME/im`                       | `$XDG_DATA_DIRS/im`                        |
+//! | cache         | `$XDG_CACHE_HOME/im`                      | —                                          |
+//! | state         | `$XDG_STATE_HOME/im`                      | —                                          |
 //!
-//! `IM_CONFIG_HOME`, `IM_DATA_HOME`, `IM_CONFIG_DIRS`, `IM_DATA_DIRS`,
-//! `IM_CACHE_HOME` and `IM_STATE_HOME` override the corresponding XDG variable,
-//! which makes it possible to run a completely isolated `im` from a script:
+//! The `IM_*` variables name *`im` directories*, not base directories, which is
+//! what you want for a script, a test or a second profile:
+//!
+//! | Variable                       | Replaces                                     |
+//! | ------------------------------ | -------------------------------------------- |
+//! | `IM_CONFIG_HOME`, `IM_DATA_HOME` | the corresponding `$XDG_*_HOME/im`          |
+//! | `IM_CONFIG_DIRS`, `IM_DATA_DIRS` | the corresponding `$XDG_*_DIRS` list        |
+//! | `IM_CACHE_HOME`, `IM_STATE_HOME` | the corresponding `$XDG_*_HOME/im`          |
 //!
 //! ```console
-//! $ IM_CONFIG_HOME=/tmp/imtest im query vsgo
+//! $ IM_DATA_HOME=$PWD/data im query --schema double_pinyin vsgo
 //! ```
 //!
 //! Layout inside a directory:
@@ -26,6 +31,7 @@
 //! <config dir>/schemas/*.toml   user-defined input schemes
 //! <data dir>/dict/*.tsv         dictionaries
 //! <data dir>/schemas/*.toml     schemes shipped by a distribution
+//! <data dir>/user.tsv           the user's own dictionary
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -45,27 +51,39 @@ impl Paths {
     /// Resolve directories from the environment.
     pub fn from_env() -> Self {
         let home = env_dir("HOME");
-        let user_config = env_dir("IM_CONFIG_HOME")
-            .or_else(|| env_dir("XDG_CONFIG_HOME"))
-            .or_else(|| home.as_ref().map(|h| h.join(".config")));
-        let user_data = env_dir("IM_DATA_HOME")
-            .or_else(|| env_dir("XDG_DATA_HOME"))
-            .or_else(|| home.as_ref().map(|h| h.join(".local/share")));
-        let cache = env_dir("IM_CACHE_HOME")
-            .or_else(|| env_dir("XDG_CACHE_HOME"))
-            .or_else(|| home.as_ref().map(|h| h.join(".cache")));
-        let state = env_dir("IM_STATE_HOME")
-            .or_else(|| env_dir("XDG_STATE_HOME"))
-            .or_else(|| home.as_ref().map(|h| h.join(".local/state")));
+        let config_home =
+            home_dir("IM_CONFIG_HOME", "XDG_CONFIG_HOME", &home, ".config");
+        let data_home =
+            home_dir("IM_DATA_HOME", "XDG_DATA_HOME", &home, ".local/share");
+        let cache_home = home_dir("IM_CACHE_HOME", "XDG_CACHE_HOME", &home, ".cache");
+        let state_home =
+            home_dir("IM_STATE_HOME", "XDG_STATE_HOME", &home, ".local/state");
 
-        let config_dirs = dir_list("IM_CONFIG_DIRS", "XDG_CONFIG_DIRS", "/etc/xdg");
-        let data_dirs = dir_list(
-            "IM_DATA_DIRS",
-            "XDG_DATA_DIRS",
-            "/usr/local/share:/usr/share",
-        );
+        // An `IM_*_DIRS` entry already names an `im` directory; an
+        // `XDG_*_DIRS` entry is a base directory and gets `/im` appended.
+        let config_dirs = env_list("IM_CONFIG_DIRS").unwrap_or_else(|| {
+            env_list("XDG_CONFIG_DIRS")
+                .unwrap_or_else(|| split_dirs("/etc/xdg"))
+                .into_iter()
+                .map(|dir| dir.join("im"))
+                .collect()
+        });
+        let data_dirs = env_list("IM_DATA_DIRS").unwrap_or_else(|| {
+            env_list("XDG_DATA_DIRS")
+                .unwrap_or_else(|| split_dirs("/usr/local/share:/usr/share"))
+                .into_iter()
+                .map(|dir| dir.join("im"))
+                .collect()
+        });
 
-        Self::assemble(user_config, user_data, cache, state, config_dirs, data_dirs)
+        Self::assemble(
+            config_home,
+            data_home,
+            cache_home,
+            state_home,
+            config_dirs,
+            data_dirs,
+        )
     }
 
     fn assemble(
@@ -76,33 +94,28 @@ impl Paths {
         config_dirs: Vec<PathBuf>,
         data_dirs: Vec<PathBuf>,
     ) -> Self {
-        let user_config = user_config.map(|d| d.join("im"));
-        let user_data = user_data.map(|d| d.join("im"));
-        let mut config = Vec::new();
-        if let Some(dir) = &user_config {
-            config.push(dir.clone());
-        }
-        config.extend(config_dirs.into_iter().map(|d| d.join("im")));
+        let mut config = user_config.into_iter().collect::<Vec<_>>();
+        config.extend(config_dirs);
         dedup(&mut config);
+        let user_config = config.first().cloned();
 
-        let mut data = Vec::new();
-        if let Some(dir) = &user_data {
-            data.push(dir.clone());
-        }
-        data.extend(data_dirs.into_iter().map(|d| d.join("im")));
+        let mut data = user_data.into_iter().collect::<Vec<_>>();
+        data.extend(data_dirs);
         dedup(&mut data);
+        let user_data = data.first().cloned();
 
         Self {
             config_dirs: config,
             data_dirs: data,
             user_config,
             user_data,
-            cache_dir: cache.map(|d| d.join("im")),
-            state_dir: state.map(|d| d.join("im")),
+            cache_dir: cache,
+            state_dir: state,
         }
     }
 
-    /// Build a set of directories explicitly; used by tests and tools.
+    /// Build a set of directories explicitly; used by tests and by tools that
+    /// know exactly which directories to read.
     pub fn new(
         config_dirs: Vec<PathBuf>,
         data_dirs: Vec<PathBuf>,
@@ -131,6 +144,9 @@ impl Paths {
     }
 
     /// The user's own configuration directory, if one could be determined.
+    ///
+    /// This is the directory `im` writes to, which is why it is the first one
+    /// rather than an arbitrary match.
     pub fn user_config_dir(&self) -> Option<&Path> {
         self.user_config.as_deref()
     }
@@ -152,12 +168,12 @@ impl Paths {
 
     /// Path of the user's configuration file, whether or not it exists.
     pub fn user_config_file(&self) -> Option<PathBuf> {
-        self.user_config.as_ref().map(|d| d.join("im.toml"))
+        self.user_config.as_ref().map(|dir| dir.join("im.toml"))
     }
 
     /// Path of the user's dictionary, whether or not it exists.
     pub fn user_dictionary_file(&self) -> Option<PathBuf> {
-        self.user_data.as_ref().map(|d| d.join("user.tsv"))
+        self.user_data.as_ref().map(|dir| dir.join("user.tsv"))
     }
 
     /// Every existing configuration file, lowest precedence first.
@@ -172,24 +188,35 @@ impl Paths {
         files
     }
 
-    /// Directories that were searched, for error messages.
+    /// Human-readable list of what was searched, for error messages.
     pub fn describe(&self) -> String {
-        let config: Vec<String> = self
-            .config_dirs
-            .iter()
-            .map(|d| d.display().to_string())
-            .collect();
-        let data: Vec<String> = self
-            .data_dirs
-            .iter()
-            .map(|d| d.display().to_string())
-            .collect();
         format!(
             "config: [{}]; data: [{}]",
-            config.join(", "),
-            data.join(", ")
+            join_paths(&self.config_dirs),
+            join_paths(&self.data_dirs)
         )
     }
+}
+
+fn join_paths(paths: &[PathBuf]) -> String {
+    paths
+        .iter()
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Resolve an `im` directory from `app_var`, or `xdg_var` + `im`, or
+/// `$HOME` + `fallback`.
+fn home_dir(
+    app_var: &str,
+    xdg_var: &str,
+    home: &Option<PathBuf>,
+    fallback: &str,
+) -> Option<PathBuf> {
+    env_dir(app_var)
+        .or_else(|| env_dir(xdg_var).map(|dir| dir.join("im")))
+        .or_else(|| home.as_ref().map(|dir| dir.join(fallback).join("im")))
 }
 
 /// Read an environment variable and require it to be an absolute directory.
@@ -202,14 +229,10 @@ fn env_dir(name: &str) -> Option<PathBuf> {
     path.is_absolute().then_some(path)
 }
 
-/// Read a colon-separated directory list, falling back to `default`.
-fn dir_list(app_var: &str, xdg_var: &str, default: &str) -> Vec<PathBuf> {
-    let raw = std::env::var(app_var)
-        .ok()
-        .filter(|v| !v.is_empty())
-        .or_else(|| std::env::var(xdg_var).ok().filter(|v| !v.is_empty()))
-        .unwrap_or_else(|| default.to_owned());
-    split_dirs(&raw)
+/// Read a colon-separated list from an environment variable.
+fn env_list(name: &str) -> Option<Vec<PathBuf>> {
+    let value = std::env::var(name).ok().filter(|v| !v.is_empty())?;
+    Some(split_dirs(&value))
 }
 
 /// Split a colon-separated list, dropping relative and empty entries.
@@ -255,26 +278,63 @@ mod tests {
     }
 
     #[test]
-    fn lists_fall_back_to_the_default() {
-        let dirs = dir_list("IM_TEST_MISSING", "IM_TEST_MISSING_XDG", "/x:/y");
-        assert_eq!(dirs, vec![PathBuf::from("/x"), PathBuf::from("/y")]);
-    }
-
-    #[test]
-    fn user_directory_comes_first() {
+    fn user_directories_come_first_and_are_the_only_writable_ones() {
         let paths = Paths::new(
-            vec![PathBuf::from("/home/u/.config/im")],
-            vec![PathBuf::from("/usr/share/im")],
-            None,
+            vec![
+                PathBuf::from("/home/u/.config/im"),
+                PathBuf::from("/etc/xdg/im"),
+            ],
+            vec![
+                PathBuf::from("/home/u/.local/share/im"),
+                PathBuf::from("/usr/share/im"),
+            ],
+            Some(PathBuf::from("/home/u/.cache/im")),
         );
         assert_eq!(paths.config_dirs()[0], PathBuf::from("/home/u/.config/im"));
+        assert_eq!(
+            paths.user_config_dir(),
+            Some(Path::new("/home/u/.config/im"))
+        );
         assert_eq!(
             paths.user_config_file(),
             Some(PathBuf::from("/home/u/.config/im/im.toml"))
         );
         assert_eq!(
             paths.user_dictionary_file(),
-            Some(PathBuf::from("/usr/share/im/user.tsv"))
+            Some(PathBuf::from("/home/u/.local/share/im/user.tsv"))
+        );
+        assert_eq!(paths.cache_dir(), Some(Path::new("/home/u/.cache/im")));
+    }
+
+    #[test]
+    fn home_dir_falls_back_from_the_app_variable_to_xdg_to_home() {
+        let home = Some(PathBuf::from("/home/u"));
+        // None of the environment variables below are set in the test
+        // environment, so the chain falls through to `$HOME`.
+        assert_eq!(
+            home_dir("IM_TEST_APP_HOME", "IM_TEST_XDG_HOME", &home, ".config"),
+            Some(PathBuf::from("/home/u/.config/im"))
+        );
+        assert_eq!(
+            home_dir("IM_TEST_APP_HOME", "IM_TEST_XDG_HOME", &None, ".config"),
+            None
+        );
+    }
+
+    #[test]
+    fn assembling_keeps_precedence_order() {
+        let paths = Paths::assemble(
+            Some(PathBuf::from("/u/.config/im")),
+            Some(PathBuf::from("/u/.local/share/im")),
+            None,
+            None,
+            vec![PathBuf::from("/etc/xdg/im"), PathBuf::from("/u/.config/im")],
+            vec![PathBuf::from("/usr/share/im")],
+        );
+        assert_eq!(
+            paths.config_dirs(),
+            &[PathBuf::from("/u/.config/im"), PathBuf::from("/etc/xdg/im")],
+            "the user directory is first and duplicates are dropped"
         );
     }
 }

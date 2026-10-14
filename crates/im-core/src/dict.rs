@@ -203,23 +203,40 @@ impl Dictionary {
         }
     }
 
-    /// Append every entry of `other` and re-canonicalize.
-    pub fn extend(&mut self, other: Dictionary) {
+    /// Append every entry of `other`, keeping file order and duplicates.
+    ///
+    /// Duplicate removal needs a sort or a hash map, and the index already has
+    /// both the code and the text of every entry in hand, so it does that pass
+    /// itself. Use [`Dictionary::extend`] when the result has to be a clean
+    /// dictionary on its own.
+    pub fn append(&mut self, other: Dictionary) {
         self.entries.extend(other.entries);
-        self.canonicalize();
+    }
+
+    /// Append every entry of `other` and remove duplicates.
+    pub fn extend(&mut self, other: Dictionary) {
+        self.append(other);
+        self.dedup();
     }
 
     /// Merge dictionaries into a new one.
     ///
-    /// Duplicate `(text, spelling)` pairs keep the highest weight and origin,
-    /// so a user entry always beats a shipped one.
+    /// Duplicate `(text, spelling)` pairs keep the user's record, so an entry
+    /// in `user.tsv` replaces the shipped one outright. The order of the result
+    /// is unspecified: the index sorts by code anyway, and the extra pass over
+    /// a large dictionary is not worth paying for on every start.
     pub fn merged(dictionaries: impl IntoIterator<Item = Dictionary>) -> Self {
         let mut dict = Self::new();
         for other in dictionaries {
-            dict.entries.extend(other.entries);
+            dict.append(other);
         }
-        dict.canonicalize();
+        dict.dedup();
         dict
+    }
+
+    /// Keep only the entries for which `keep` returns true.
+    pub fn retain(&mut self, mut keep: impl FnMut(&Entry) -> bool) {
+        self.entries.retain(|entry| keep(entry));
     }
 
     /// Sort entries into the canonical order used when writing files.
@@ -227,15 +244,15 @@ impl Dictionary {
         self.entries.sort_by(canonical_cmp);
     }
 
-    /// Sort canonically and drop duplicate `(text, spelling)` pairs.
+    /// Drop duplicate `(text, spelling)` pairs.
     ///
     /// When the user's own dictionary redefines a word, the user's record wins
     /// outright — both its weight and its origin. Anything else would make
     /// `user.tsv` a suggestion rather than a statement.
     ///
     /// A sort is used rather than a hash map because dictionaries run to
-    /// hundreds of thousands of entries and the result is a sorted file anyway.
-    pub fn canonicalize(&mut self) {
+    /// hundreds of thousands of entries.
+    pub fn dedup(&mut self) {
         // Origin descending first means `dedup_by` sees the user's record first
         // and can drop the shipped one.
         self.entries.sort_by(|a, b| {
@@ -247,6 +264,12 @@ impl Dictionary {
         });
         self.entries
             .dedup_by(|a, b| a.text == b.text && a.spelling == b.spelling);
+    }
+
+    /// Sort canonically and drop duplicates; the order used when writing a
+    /// dictionary file.
+    pub fn canonicalize(&mut self) {
+        self.dedup();
         self.sort_canonical();
     }
 
@@ -279,6 +302,38 @@ impl Dictionary {
                 .map_err(|e| Error::io(parent.display(), e))?;
         }
         std::fs::write(path, self.to_tsv()).map_err(|e| Error::io(path.display(), e))
+    }
+}
+
+/// The dictionary `im` ships with, compiled into the binary.
+///
+/// Enabled by the `embed-dictionary` feature. A front end that has it on works
+/// with nothing installed, which matters for a tool whose whole point is being
+/// usable from a pipe on a machine where nobody ran an installer.
+///
+/// The embedded copy is only a fallback: a `dict/<NAME>.tsv` on disk always
+/// wins, so a distribution package or a user can override it.
+#[cfg(feature = "embed-dictionary")]
+pub mod embedded {
+    /// The name the embedded dictionary answers to.
+    pub const NAME: &str = "pinyin";
+
+    /// The generated dictionary, in the same format as any other.
+    pub const SOURCE: &str = include_str!("../../../data/dict/pinyin.tsv");
+}
+
+/// The name and text of the dictionary compiled into this build, if any.
+///
+/// `None` from a build without the `embed-dictionary` feature, so callers do not
+/// need to know about the feature themselves.
+pub fn embedded_dictionary() -> Option<(&'static str, &'static str)> {
+    #[cfg(feature = "embed-dictionary")]
+    {
+        Some((embedded::NAME, embedded::SOURCE))
+    }
+    #[cfg(not(feature = "embed-dictionary"))]
+    {
+        None
     }
 }
 

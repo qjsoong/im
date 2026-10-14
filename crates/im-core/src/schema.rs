@@ -131,6 +131,9 @@ impl Schema {
         if let Some(0) = self.page_size {
             return Err(Error::schema(&self.id, "page_size must be at least 1"));
         }
+        self.speller
+            .validate()
+            .map_err(|message| Error::schema(&self.id, message))?;
         Ok(())
     }
 
@@ -143,21 +146,35 @@ impl Schema {
     }
     /// Fold one spelling into a code under this schema.
     pub fn fold(&self, spelling: &str) -> String {
+        let mut out = String::with_capacity(spelling.len());
+        self.fold_into(spelling, &mut out);
+        out
+    }
+
+    /// Fold one spelling into `out`, replacing what it held.
+    pub fn fold_into(&self, spelling: &str, out: &mut String) {
         match self.kind {
-            SchemaKind::Syllable => self.speller.fold(spelling),
-            SchemaKind::Table => spelling.split_whitespace().collect(),
+            SchemaKind::Syllable => self.speller.fold_into(spelling, out),
+            SchemaKind::Table => {
+                out.clear();
+                for syllable in spelling.split_whitespace() {
+                    out.push_str(syllable);
+                }
+            }
         }
     }
 
     /// Build the searchable index for this schema.
     ///
-    /// Duplicate `(text, spelling)` pairs across dictionaries are merged, with
-    /// the highest weight and origin winning.
+    /// Entries from every dictionary are folded and sorted together. A record
+    /// that repeats a `(code, text)` pair already present is dropped, keeping
+    /// the one that ranks highest — and the user's own entry ranks highest,
+    /// because [`crate::Origin::User`] adds a bonus to the ranking weight.
     pub fn index(
         &self,
         dictionaries: impl IntoIterator<Item = Dictionary>,
     ) -> Result<CodeIndex> {
-        CodeIndex::build(self, Dictionary::merged(dictionaries))
+        CodeIndex::build(self, dictionaries)
     }
 }
 
@@ -278,5 +295,28 @@ mod tests {
             Err(e) => panic!("{e}"),
         };
         assert_eq!(schema.fold("khk"), "khk");
+    }
+
+    #[test]
+    fn rejects_table_values_that_cannot_be_typed() {
+        let err = Schema::parse(
+            "id = \"x\"\nname = \"X\"\ndictionaries = []\n\
+             [speller]\ninitials = [\"zh\"]\n\
+             [speller.finals]\nong = \"S\"\n",
+        );
+        let Err(Error::Schema { message, .. }) = err else {
+            panic!("expected a schema error, got {err:?}");
+        };
+        assert!(message.contains("finals"), "{message}");
+    }
+
+    #[test]
+    fn fold_into_reuses_the_buffer() {
+        let schema = builtin::get("double_pinyin").unwrap_or_else(|e| panic!("{e}"));
+        let mut buffer = String::from("leftover");
+        schema.fold_into("zhong guo", &mut buffer);
+        assert_eq!(buffer, "vsgo");
+        schema.fold_into("ni", &mut buffer);
+        assert_eq!(buffer, "ni");
     }
 }

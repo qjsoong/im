@@ -78,14 +78,23 @@ impl Speller {
     /// them without producing a hard error.
     pub fn fold(&self, spelling: &str) -> String {
         let mut out = String::with_capacity(spelling.len());
+        self.fold_into(spelling, &mut out);
+        out
+    }
+
+    /// Fold one spelling into `out`, replacing what it held.
+    ///
+    /// Building the index for a large dictionary folds a quarter of a million
+    /// spellings; reusing one buffer saves an allocation per entry.
+    pub fn fold_into(&self, spelling: &str, out: &mut String) {
+        out.clear();
         for syllable in spelling.split_whitespace() {
             if self.is_identity() {
                 out.push_str(syllable);
             } else {
-                self.fold_syllable_into(syllable, &mut out);
+                self.fold_syllable_into(syllable, out);
             }
         }
-        out
     }
 
     /// Fold a single syllable, for tests and for rendering previews.
@@ -146,6 +155,46 @@ impl Speller {
         }
         syllable.to_owned()
     }
+
+    /// Check that every table produces code characters.
+    ///
+    /// Codes are matched against each other and against typed input, so a
+    /// table value containing anything but `[a-z0-9]` would make a code that
+    /// can never be typed. Catching it at load time turns a silent dead entry
+    /// into a message naming the schema.
+    pub(crate) fn validate(&self) -> std::result::Result<(), String> {
+        for (table, entries) in [
+            ("initial_keys", &self.initial_keys),
+            ("finals", &self.finals),
+            ("null_initials", &self.null_initials),
+        ] {
+            for (from, to) in entries {
+                if !is_code(to) {
+                    return Err(format!(
+                        "[speller.{table}] {from} = {to:?} is not a sequence of \
+                         lowercase letters or digits"
+                    ));
+                }
+            }
+        }
+        for initial in &self.initials {
+            if !is_code(initial) {
+                return Err(format!(
+                    "[speller] initial {initial:?} is not a sequence of lowercase \
+                     letters or digits"
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// True when `text` could be typed on a keyboard as a code.
+fn is_code(text: &str) -> bool {
+    !text.is_empty()
+        && text
+            .chars()
+            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit())
 }
 
 /// After `j q x y` a written `u` is really `ü`.
