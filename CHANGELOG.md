@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project aims to follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.0] - 2026-10-14
 
 ### Added
 
@@ -31,4 +31,4 @@ and the project aims to follow [Semantic Versioning](https://semver.org/).
   [jieba](https://github.com/fxsjy/jieba) word frequencies, with a reproducible
   pipeline in `xtask`.
 
-[Unreleased]: https://github.com/qjsoong/im/commits/main
+[0.1.0]: https://github.com/qjsoong/im/releases/tag/v0.1.0

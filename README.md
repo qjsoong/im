@@ -41,18 +41,42 @@ $ im          # interactive picker: type, choose, print to stdout
 - **Small and predictable.** No network, no database, no background indexer. The
   engine is a sorted array of codes and a dozen binary searches.
 
+## What it does not do
+
+Worth stating plainly, so a missing feature is not mistaken for a defect:
+
+- **No sentence-level input.** Candidates are words and phrases from the
+  dictionary, not a language model's reading of a whole sentence. Typing
+  `zhongguo` offers 中国; it will not turn a paragraph of pinyin into prose.
+- **No fuzzy pinyin.** `zh` and `z` stay distinct, and so do `n` and `l`. A
+  scheme that folds them can be written as a schema, but there is no switch.
+- **No learning.** Picking a candidate does not move it up next time.
+  `im dict add` is the deliberate way to change what wins.
+- **No GUI, no settings dialog.** Configuration is a text file, and that is the
+  point rather than a gap waiting to be filled.
+- **X11, not Wayland.** There is no Wayland input-method protocol front end and
+  no per-toolkit module (`GTK_IM_MODULE`, `QT_IM_MODULE`); XIM covers the
+  desktop, and the terminal picker covers everything else.
+- **Linux is the only tested platform.** The engine is portable and links no C
+  libraries, but nothing else has actually been run.
+
 ## Status
 
 Early, but complete enough to use. The engine, the shipped dictionary, the
 terminal picker, the query interface and the XIM server all work and are covered
-by tests; there is no tagged release yet. Until binaries are published, install
-from source:
+by tests.
+
+Every release carries both binaries for `x86_64-unknown-linux-gnu`, the two
+licences and the dictionary. Take the archive from
+<https://github.com/qjsoong/im/releases/latest>, or build from source:
 
 ```bash
-cargo install --git https://github.com/qjsoong/im im-cli
+cargo install --git https://github.com/qjsoong/im --tag v0.1.0 im-cli im-xim
 ```
 
-The minimum supported Rust version is 1.89.
+`--tag` matters: installing from the default branch gets whatever is in progress
+rather than a version. The minimum supported Rust version is 1.89, and building
+needs no C libraries — `im-xim` speaks the X11 protocol directly.
 
 ## How it works
 
@@ -81,6 +105,7 @@ then a shorter prefix of the input, then a completion of an unfinished code.
 | [`docs/schemas.md`](docs/schemas.md)    | how to write a new input scheme            |
 | [`docs/dictionary.md`](docs/dictionary.md) | dictionary format and the user dictionary |
 | [`docs/design.md`](docs/design.md)      | the architecture and why it is shaped this way |
+| [`docs/releasing.md`](docs/releasing.md) | what a tag does, and what to check after |
 
 ## Repository layout
 

@@ -1,0 +1,24 @@
+version: 2
+
+updates:
+  # The workflows pin every action to a commit, so this is what keeps them
+  # current. Without it a pin silently ages.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "build"
+    open-pull-requests-limit: 5
+    # Pinned from the start; bumping them is a decision, not a chore.
+    ignore:
+      - dependency-name: "x11rb"
+      - dependency-name: "xim"

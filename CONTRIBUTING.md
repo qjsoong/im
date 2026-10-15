@@ -62,6 +62,11 @@ to the tests in `crates/im-core/src/speller.rs`. If a scheme cannot be expressed
 with the existing tables, that is a design discussion worth having in an issue
 first.
 
+## Releasing
+
+Maintainers: [`docs/releasing.md`](docs/releasing.md) is the procedure, including
+what a version number promises and what to check after a tag is pushed.
+
 ## Commit messages
 
 Conventional Commits, one logical change per commit, imperative mood:
