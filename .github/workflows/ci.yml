@@ -45,15 +45,20 @@ jobs:
   msrv:
     name: Minimum supported Rust version
     runs-on: ubuntu-latest
+    env:
+      # `rust-toolchain.toml` asks for stable, and a toolchain file beats the
+      # toolchain the action installs. This variable beats the toolchain file,
+      # which is what actually makes this job check the minimum version.
+      RUSTUP_TOOLCHAIN: "1.89.0"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
         with:
           toolchain: "1.89.0"
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      # This job is only worth running if it really is the old toolchain. A
-      # dependency bump once silently pointed it at stable, which would have
-      # made it a green check that checked nothing.
+      # This job is only worth running if it really is the old toolchain: both
+      # `rust-toolchain.toml` and a dependency bump have silently pointed it at
+      # stable, and a green check that checks nothing is worse than no check.
       - name: Assert the toolchain really is the MSRV
         run: |
           set -euo pipefail
