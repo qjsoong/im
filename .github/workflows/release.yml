@@ -16,6 +16,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
 
       # `x11rb` speaks the X11 protocol directly and needs no C libraries, so
@@ -31,6 +33,8 @@ jobs:
           mkdir -p "$stage"
           cp target/release/im target/release/im-xim "$stage/"
           cp README.md LICENSE-MIT LICENSE-APACHE "$stage/"
+          # The binaries embed this dictionary, and it is the one file here
+          # that is not under the code licence, so its notice travels with it.
           cp -r data/dict "$stage/dict"
           tar czf "${stage}.tar.gz" "$stage"
           sha256sum ./*.tar.gz > SHA256SUMS
